@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Score a card transaction for fraud risk in real time with a RandomForest trained on one million labelled transactions.">
+  <meta name="color-scheme" content="light">
+  <title>{{ service_name }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+
+    <header class="header">
+      <div class="header__text">
+        <p class="eyebrow">Fraud Detection · v{{ service_version }}</p>
+        <h1 class="title">{{ service_name }}</h1>
+        <p class="tagline">
+          Scores a card transaction for fraud risk in real time using a RandomForest trained on
+          one million labelled transactions. Every result names the model that produced it.
+        </p>
+      </div>
+      <div class="header__status" aria-live="polite">
+        <span class="status-label">Serving model</span>
+        <span id="model-badge" class="badge badge--loading" title="Read from GET /health on page load">checking…</span>
+      </div>
+    </header>
+
+    <aside class="notice" role="note">
+      <strong>Cold start.</strong> This demo runs on Render's free tier, which sleeps after 15 minutes
+      of inactivity. The first request after idle can take about 50 seconds while the container starts;
+      subsequent requests respond in milliseconds.
+    </aside>
+
+    <main class="layout">
+
+      <section class="card card--form" aria-labelledby="form-heading">
+        <div class="card__head">
+          <h2 id="form-heading" class="card__title">Transaction</h2>
+          <div class="examples">
+            <button type="button" class="btn btn--ghost" id="load-legit" data-example="legit">Load legitimate example</button>
+            <button type="button" class="btn btn--ghost" id="load-fraud" data-example="fraud">Load fraudulent example</button>
+          </div>
+        </div>
+
+        <form id="predict-form" novalidate>
+          <div class="grid">
+
+            <div class="field">
+              <label for="distance_from_home">Distance from home <span class="unit">km</span></label>
+              <input type="number" id="distance_from_home" name="distance_from_home" inputmode="decimal" min="0" step="any" required value="5.2">
+              <p class="hint">Between the transaction location and the cardholder's home address.</p>
+              <p class="error" data-error-for="distance_from_home"></p>
+            </div>
+
+            <div class="field">
+              <label for="distance_from_last_transaction">Distance from last transaction <span class="unit">km</span></label>
+              <input type="number" id="distance_from_last_transaction" name="distance_from_last_transaction" inputmode="decimal" min="0" step="any" required value="0.4">
+              <p class="hint">From the previous transaction's location to this one.</p>
+              <p class="error" data-error-for="distance_from_last_transaction"></p>
+            </div>
+
+            <div class="field">
+              <label for="ratio_to_median_purchase_price">Ratio to median purchase price</label>
+              <input type="number" id="ratio_to_median_purchase_price" name="ratio_to_median_purchase_price" inputmode="decimal" min="0" step="any" required value="0.9">
+              <p class="hint">Transaction price ÷ this cardholder's median purchase. 1.0 is typical spend.</p>
+              <p class="error" data-error-for="ratio_to_median_purchase_price"></p>
+            </div>
+
+            <div class="field">
+              <label for="repeat_retailer">Repeat retailer</label>
+              <select id="repeat_retailer" name="repeat_retailer" required>
+                <option value="1" selected>Yes — used before by this card</option>
+                <option value="0">No — first purchase here</option>
+              </select>
+              <p class="error" data-error-for="repeat_retailer"></p>
+            </div>
+
+            <div class="field">
+              <label for="used_chip">Used chip</label>
+              <select id="used_chip" name="used_chip" required>
+                <option value="1" selected>Yes — EMV chip read</option>
+                <option value="0">No — swipe or manual entry</option>
+              </select>
+              <p class="error" data-error-for="used_chip"></p>
+            </div>
+
+            <div class="field">
+              <label for="used_pin_number">Used PIN</label>
+              <select id="used_pin_number" name="used_pin_number" required>
+                <option value="1">Yes — PIN entered</option>
+                <option value="0" selected>No — no PIN</option>
+              </select>
+              <p class="error" data-error-for="used_pin_number"></p>
+            </div>
+
+            <div class="field">
+              <label for="online_order">Online order</label>
+              <select id="online_order" name="online_order" required>
+                <option value="1">Yes — card not present</option>
+                <option value="0" selected>No — in person</option>
+              </select>
+              <p class="error" data-error-for="online_order"></p>
+            </div>
+
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary" id="submit-btn">
+              <span class="btn__label">Score transaction</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+            <span class="actions__hint">Sends <code>POST /v2/predict</code></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="card card--result" aria-labelledby="result-heading" aria-live="polite">
+        <h2 id="result-heading" class="card__title">Verdict</h2>
+
+        <div id="result-idle" class="result result--idle">
+          <p>No transaction scored yet. Fill in the form or load an example, then score it.</p>
+        </div>
+
+        <div id="result-loading" class="result result--loading" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Scoring…</p>
+          <p class="muted">If the service was idle this can take up to a minute.</p>
+        </div>
+
+        <div id="result-verdict" class="result verdict" hidden>
+          <p class="verdict__label" id="verdict-label">—</p>
+          <p class="verdict__sub" id="verdict-sub"></p>
+          <dl class="meta">
+            <div><dt>Served by</dt><dd><code id="verdict-model">—</code></dd></div>
+            <div><dt>Latency</dt><dd id="verdict-latency">—</dd></div>
+            <div><dt>Raw response</dt><dd><code id="verdict-raw" class="raw">—</code></dd></div>
+          </dl>
+        </div>
+
+        <div id="result-error" class="result result--error" role="alert" hidden>
+          <p class="result__title">Request failed</p>
+          <p id="error-message"></p>
+          <ul id="error-list"></ul>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      <nav class="footer__links" aria-label="Project links">
+        <a href="{{ repo_url }}" rel="noopener">Source on GitHub</a>
+        <a href="/docs">API documentation</a>
+        <a href="/health">Health JSON</a>
+      </nav>
+      <p class="footer__note">
+        Model: RandomForest, class-weighted, trained on OpenML 45955 (<em>card_transdata</em>, CC0).
+        Research demo — not a production fraud system.
+      </p>
+    </footer>
+
+  </div>
+
+  <noscript>
+    <div class="noscript">This page needs JavaScript to call the scoring API. The API itself works without it — see <a href="/docs">/docs</a>.</div>
+  </noscript>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

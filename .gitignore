@@ -13,6 +13,9 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
+# Raw dataset cache written by fetch_openml (re-downloadable, ~20 MB)
+data/
+
 # Environment / secrets
 .env
 

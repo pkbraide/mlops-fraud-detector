@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .ipynb_checkpoints/
+data/
 .env
 .DS_Store
 .git/

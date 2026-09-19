@@ -46,17 +46,49 @@ jobs:
       - name: Build Docker image
         run: docker build -t mlops-fraud-detector:${{ github.sha }} .
 
+      - name: Verify UI assets are inside the image
+        run: |
+          docker run --rm mlops-fraud-detector:${{ github.sha }} \
+            sh -c 'ls -la app/templates app/static models && test -f app/templates/index.html && test -f app/static/style.css && test -f app/static/app.js && test -f models/fraud_model_v2.joblib && test -f models/fraud_model.joblib'
+
       - name: Smoke test container
         run: |
           docker run -d --rm --name fraud-api -p 8000:8000 mlops-fraud-detector:${{ github.sha }}
           for i in $(seq 1 15); do
-            if curl -fsS http://localhost:8000/ > /dev/null; then break; fi
+            if curl -fsS http://localhost:8000/health > /dev/null; then break; fi
             sleep 2
           done
-          curl -fsS http://localhost:8000/ | tee health.json
+
+          echo "--- GET /health ---"
+          curl -fsS http://localhost:8000/health | tee health.json
+          echo
           grep -q '"status":"healthy"' health.json
+          grep -q '"model_version":"joblib_model_v2"' health.json
+          grep -q '"mock_mode":false' health.json
+
+          echo "--- GET / (expect HTML) ---"
+          curl -fsS -D headers.txt http://localhost:8000/ -o index.html
+          grep -i '^content-type: text/html' headers.txt
+          grep -q '<title>Enterprise Real-Time Fraud Detection Engine</title>' index.html
+          grep -q 'id="predict-form"' index.html
+
+          echo "--- GET /static/style.css ---"
+          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/static/style.css
+          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/static/app.js
+
+          echo "--- POST /v2/predict (fraud example) ---"
+          curl -fsS -X POST http://localhost:8000/v2/predict \
+            -H "Content-Type: application/json" \
+            -d '{"distance_from_home": 210.5, "distance_from_last_transaction": 12.3, "ratio_to_median_purchase_price": 6.2, "repeat_retailer": 0, "used_chip": 0, "used_pin_number": 0, "online_order": 1}' | tee predict_v2.json
+          echo
+          grep -q '"model_version":"joblib_model_v2"' predict_v2.json
+          grep -q '"prediction":1' predict_v2.json
+
+          echo "--- POST /predict (v1 regression) ---"
           curl -fsS -X POST http://localhost:8000/predict \
             -H "Content-Type: application/json" \
-            -d '{"amount": 5000, "distance_from_home": 120.0, "use_chip": 0}' | tee predict.json
-          grep -q '"model_version":"joblib_model"' predict.json
+            -d '{"amount": 2500, "distance_from_home": 180.0, "use_chip": 0}' | tee predict_v1.json
+          echo
+          grep -q '"model_version":"joblib_model"' predict_v1.json
+
           docker stop fraud-api
