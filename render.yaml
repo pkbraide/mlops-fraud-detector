@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mlops-fraud-detector
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO

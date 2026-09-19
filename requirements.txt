@@ -1,0 +1,18 @@
+# Runtime API
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+
+# Machine learning / inference
+scikit-learn==1.7.2
+joblib==1.6.0
+numpy==2.2.6
+pandas==2.3.3
+
+# Testing
+pytest==9.1.1
+httpx==0.28.1
+
+# Code quality
+black==26.5.1
+flake8==7.3.0
