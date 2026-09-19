@@ -12,6 +12,8 @@ short_description: Real-time card fraud scoring API (FastAPI + scikit-learn)
 
 # Enterprise Real-Time Fraud Detection Engine
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pkbraide/mlops-fraud-detector)
+
 [![CI/CD](https://github.com/pkbraide/mlops-fraud-detector/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/pkbraide/mlops-fraud-detector/actions/workflows/ci-cd.yml)
 ![Python](https://img.shields.io/badge/python-3.10-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688)
@@ -27,7 +29,15 @@ rule-based fallback, a hardened non-root Docker image, a GitHub Actions
 pipeline that lints, tests and smoke-tests the container, and one-click
 deployment blueprints for Render and Hugging Face Spaces.
 
-**Live URL:** _pending deployment — see [Deployment](#deployment)_
+**Live URL:** <https://mlops-fraud-detector.onrender.com> · Interactive Swagger UI: <https://mlops-fraud-detector.onrender.com/docs>
+
+```bash
+curl -s https://mlops-fraud-detector.onrender.com/
+# {"status":"healthy","service":"Enterprise Real-Time Fraud Detection Engine","model_version":"joblib_model","mock_mode":false}
+```
+
+> Hosted on Render's free tier, which spins down after 15 minutes of inactivity —
+> the first request after idle can take 30–60 s while the container cold-starts.
 
 ---
 
