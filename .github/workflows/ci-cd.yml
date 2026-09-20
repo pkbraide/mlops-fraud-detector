@@ -40,30 +40,50 @@ jobs:
       - name: Lint (flake8)
         run: flake8 .
 
-      - name: Run tests (pytest)
+      - name: Run tests (all artifacts present)
         run: pytest -v
+
+      - name: Run tests under every artifact combination
+        run: |
+          set -e
+          V1=models/fraud_model.joblib; V2=models/fraud_model_v2.joblib; V3=models/fraud_model_v3.joblib
+          hide()    { for f in "$@"; do mv "$f" "$f.hidden"; done; }
+          restore() { for f in models/*.hidden; do [ -e "$f" ] && mv "$f" "${f%.hidden}"; done; }
+          echo "== v3 only ==";    hide "$V1" "$V2";       pytest -q; restore
+          echo "== v2 only ==";    hide "$V1" "$V3";       pytest -q; restore
+          echo "== v1 only ==";    hide "$V2" "$V3";       pytest -q; restore
+          echo "== none (mock) =="; hide "$V1" "$V2" "$V3"; pytest -q; restore
+          ls -la models
 
       - name: Build Docker image
         run: docker build -t mlops-fraud-detector:${{ github.sha }} .
 
-      - name: Verify UI assets are inside the image
+      - name: Verify UI assets and all artifacts are inside the image
         run: |
-          docker run --rm mlops-fraud-detector:${{ github.sha }} \
-            sh -c 'ls -la app/templates app/static models && test -f app/templates/index.html && test -f app/static/style.css && test -f app/static/app.js && test -f models/fraud_model_v2.joblib && test -f models/fraud_model.joblib'
+          docker run --rm mlops-fraud-detector:${{ github.sha }} sh -c '
+            set -e
+            ls -la app/templates app/static app/static/css app/static/js app/static/data models
+            for f in app/templates/base.html app/templates/index.html app/templates/batch.html app/templates/model.html app/templates/404.html \
+                     app/static/css/style.css app/static/js/common.js app/static/js/demo.js app/static/js/batch.js app/static/js/model.js \
+                     app/static/data/v3_presets.json app/static/data/sample_batch.csv \
+                     models/fraud_model.joblib models/fraud_model_v2.joblib models/fraud_model_v3.joblib; do
+              test -f "$f" && echo "ok  $f"
+            done
+            whoami'
 
       - name: Smoke test container
         run: |
+          set -e
           docker run -d --rm --name fraud-api -p 8000:8000 mlops-fraud-detector:${{ github.sha }}
-          for i in $(seq 1 15); do
+          for i in $(seq 1 20); do
             if curl -fsS http://localhost:8000/health > /dev/null; then break; fi
             sleep 2
           done
 
           echo "--- GET /health ---"
-          curl -fsS http://localhost:8000/health | tee health.json
-          echo
+          curl -fsS http://localhost:8000/health | tee health.json; echo
           grep -q '"status":"healthy"' health.json
-          grep -q '"model_version":"joblib_model_v2"' health.json
+          grep -q '"model_version":"joblib_model_v3"' health.json
           grep -q '"mock_mode":false' health.json
 
           echo "--- GET / (expect HTML) ---"
@@ -71,24 +91,52 @@ jobs:
           grep -i '^content-type: text/html' headers.txt
           grep -q '<title>Enterprise Real-Time Fraud Detection Engine</title>' index.html
           grep -q 'id="predict-form"' index.html
+          grep -q 'id="v3-presets"' index.html
 
-          echo "--- GET /static/style.css ---"
-          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/static/style.css
-          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/static/app.js
+          echo "--- HEAD / ---"
+          curl -fsS -I http://localhost:8000/ | grep -i '^HTTP/1.1 200'
 
-          echo "--- POST /v2/predict (fraud example) ---"
-          curl -fsS -X POST http://localhost:8000/v2/predict \
-            -H "Content-Type: application/json" \
-            -d '{"distance_from_home": 210.5, "distance_from_last_transaction": 12.3, "ratio_to_median_purchase_price": 6.2, "repeat_retailer": 0, "used_chip": 0, "used_pin_number": 0, "online_order": 1}' | tee predict_v2.json
-          echo
+          echo "--- GET /batch and /model ---"
+          curl -fsS http://localhost:8000/batch | grep -q '<title>Batch scoring'
+          curl -fsS http://localhost:8000/model | grep -q '<title>Model card'
+
+          echo "--- static assets ---"
+          for p in /static/css/style.css /static/js/common.js /static/js/demo.js /static/js/batch.js /static/js/model.js /static/data/v3_presets.json /static/data/sample_batch.csv; do
+            curl -fsS -o /dev/null -w "$p HTTP %{http_code}\n" "http://localhost:8000$p"
+          done
+
+          echo "--- GET /metrics ---"
+          curl -fsS http://localhost:8000/metrics | tee metrics.json | head -c 300; echo
+          grep -q '"fraud_precision"' metrics.json
+          python3 -c "import json; m=json.load(open('metrics.json'))['models']; assert m['v3']['loaded'] and m['v2']['loaded'] and m['v1']['loaded']; print('v3 PR-AUC', m['v3']['metrics']['pr_auc'], '| v2 PR-AUC', m['v2']['metrics']['pr_auc'])"
+
+          echo "--- POST /v3/predict (real hold-out fraud preset) ---"
+          python3 -c "import json; p=json.load(open('app/static/data/v3_presets.json'))['presets']; json.dump([x for x in p if x['id']=='fraud_caught'][0]['values'], open('v3_payload.json','w'))"
+          curl -fsS -X POST http://localhost:8000/v3/predict -H "Content-Type: application/json" -d @v3_payload.json | tee predict_v3.json; echo
+          grep -q '"model_version":"joblib_model_v3"' predict_v3.json
+          grep -q '"prediction":1' predict_v3.json
+          grep -q '"confidence":0.82' predict_v3.json
+
+          echo "--- POST /v2/predict (threshold 0.9 on a p=0.74 row must be legit) ---"
+          curl -fsS -X POST http://localhost:8000/v2/predict -H "Content-Type: application/json" \
+            -d '{"distance_from_home": 100.009, "distance_from_last_transaction": 3.4752, "ratio_to_median_purchase_price": 1.66, "repeat_retailer": 1, "used_chip": 0, "used_pin_number": 0, "online_order": 1, "threshold": 0.9}' | tee predict_v2.json; echo
           grep -q '"model_version":"joblib_model_v2"' predict_v2.json
-          grep -q '"prediction":1' predict_v2.json
+          grep -q '"prediction":0' predict_v2.json
+          grep -q '"confidence":0.74' predict_v2.json
+
+          echo "--- POST /v2/batch (sample CSV) ---"
+          curl -fsS -X POST http://localhost:8000/v2/batch -F "file=@app/static/data/sample_batch.csv;type=text/csv" | tee batch.json | head -c 300; echo
+          grep -q '"total":25' batch.json
+          grep -q '"flagged":5' batch.json
 
           echo "--- POST /predict (v1 regression) ---"
-          curl -fsS -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"amount": 2500, "distance_from_home": 180.0, "use_chip": 0}' | tee predict_v1.json
-          echo
+          curl -fsS -X POST http://localhost:8000/predict -H "Content-Type: application/json" \
+            -d '{"amount": 2500, "distance_from_home": 180.0, "use_chip": 0}' | tee predict_v1.json; echo
           grep -q '"model_version":"joblib_model"' predict_v1.json
+          ! grep -q 'confidence' predict_v1.json
+
+          echo "--- 404 handling ---"
+          curl -s -o nf.html -w "%{http_code} %{content_type}\n" http://localhost:8000/no-such-page | grep -q '404 text/html'
+          curl -s -o /dev/null -w "%{http_code} %{content_type}\n" http://localhost:8000/v2/no-such | grep -q '404 application/json'
 
           docker stop fraud-api

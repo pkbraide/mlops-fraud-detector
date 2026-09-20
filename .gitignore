@@ -13,8 +13,9 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Raw dataset cache written by fetch_openml (re-downloadable, ~20 MB)
-data/
+# Raw dataset cache written by fetch_openml (re-downloadable). Anchored to the
+# repo root on purpose: app/static/data/ ships real presets and must be tracked.
+/data/
 
 # Environment / secrets
 .env

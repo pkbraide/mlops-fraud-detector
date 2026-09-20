@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="{% block description %}Real-time card fraud scoring with a class-weighted RandomForest, confidence scores and an adjustable decision threshold.{% endblock %}">
+  <title>{% block title %}{{ service_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body data-page="{{ page }}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+
+    <header class="topbar">
+      <a class="brand" href="/">Fraud Detection Engine</a>
+      <nav class="nav" aria-label="Primary">
+        {% for item in nav_items %}
+        <a href="{{ item.href }}"{% if item.page == page %} aria-current="page"{% endif %}>{{ item.label }}</a>
+        {% endfor %}
+      </nav>
+      <div class="topbar__status">
+        <span>Serving</span>
+        <span id="model-badge" class="badge badge--loading" title="Read from GET /health on page load">checking…</span>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+      <nav class="footer__links" aria-label="Project links">
+        <a href="{{ repo_url }}" rel="noopener">Source on GitHub</a>
+        <a href="/docs">API documentation</a>
+        <a href="/health">Health JSON</a>
+        <a href="/metrics">Metrics JSON</a>
+      </nav>
+      <p>
+        <strong>Cold start.</strong> This demo runs on Render's free tier and sleeps after 15 minutes of
+        inactivity; the first request after idle can take about 50 seconds. It is not broken, it is booting.
+      </p>
+      <p>v{{ service_version }} · Research demo — not a production fraud system.</p>
+    </footer>
+
+  </div>
+
+  <noscript>
+    <div class="noscript">This page needs JavaScript to call the scoring API. The API itself works without it — see <a href="/docs">/docs</a>.</div>
+  </noscript>
+
+  <script src="/static/js/common.js" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

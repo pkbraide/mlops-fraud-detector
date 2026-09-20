@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Not found · {{ service_name }}{% endblock %}
+
+{% block content %}
+<section class="card prose" aria-labelledby="nf-heading">
+  <p class="eyebrow">404</p>
+  <h1 class="title" id="nf-heading">There is nothing at <code>{{ path }}</code></h1>
+  <p>The pages on this site are:</p>
+  <ul>
+    <li><a href="/">Demo</a> — score a transaction interactively</li>
+    <li><a href="/batch">Batch</a> — score a CSV of transactions</li>
+    <li><a href="/model">Model card</a> — datasets, metrics and limitations</li>
+    <li><a href="/docs">API documentation</a> — every JSON endpoint</li>
+  </ul>
+  <p class="muted small">API routes under <code>/v2/</code> and <code>/v3/</code> return JSON errors instead of this page.</p>
+</section>
+{% endblock %}

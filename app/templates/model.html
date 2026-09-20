@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Model card · {{ service_name }}{% endblock %}
+{% block description %}Model card: datasets, evaluation metrics, confusion matrices, feature importances and limitations for the v2 and v3 fraud models.{% endblock %}
+
+{% block content %}
+<section class="intro">
+  <p class="eyebrow">Model card</p>
+  <h1 class="title">What these models are, and are not</h1>
+  <p class="lede">
+    Every number on this page is read live from <a href="/metrics"><code>GET /metrics</code></a>, which
+    in turn reads the evaluation results stored inside each model artifact at training time. Nothing here
+    is typed into a template.
+  </p>
+</section>
+
+<div class="stack">
+
+  <section class="card prose" aria-labelledby="limits-heading">
+    <h2 id="limits-heading">Limitations — read this first</h2>
+    <p>
+      The v2 model scores near-perfectly because <em>card_transdata</em> is synthetic and its fraud label
+      is close to a deterministic function of two features. Real fraud runs at roughly 0.1 % prevalence
+      against adversaries who adapt. The v3 model, trained on real anonymised transactions at 0.172 %
+      prevalence, is the honest benchmark — and its lower scores are the realistic ones. These results
+      demonstrate the pipeline, not detection capability.
+    </p>
+
+    <h3>What these features cannot catch</h3>
+    <ul>
+      <li><strong>Velocity and sequence.</strong> Both models see one transaction at a time. Ten small purchases in five minutes, or a €1 test charge before a large one, are invisible.</li>
+      <li><strong>Merchant and category.</strong> v2 has a single "repeat retailer" bit; v3's PCA components hide merchant identity entirely. A first purchase at a pharmacy and a first purchase at a crypto exchange look alike.</li>
+      <li><strong>Account and device context.</strong> New shipping address, new device fingerprint, recent password reset, login geography, account age — none of it is a feature.</li>
+      <li><strong>Network effects.</strong> A merchant or IP already tied to other confirmed fraud carries no signal here.</li>
+      <li><strong>Fraud that looks like the cardholder.</strong> Account takeover with the correct PIN, at home, for a usual amount is undetectable by construction with either feature set.</li>
+      <li><strong>Interpretability (v3).</strong> V1–V28 are anonymised principal components. A high score cannot be explained to a cardholder or an analyst in business terms.</li>
+    </ul>
+
+    <h3>Why PR-AUC, not accuracy</h3>
+    <p>
+      At 0.172 % prevalence a model that never flags anything is 99.83 % accurate. Accuracy is dominated by
+      the easy negatives and says nothing about the class that matters. ROC-AUC is better but still rewards
+      ranking a fraud above the enormous pool of trivial legitimate rows. Precision–recall curves, and their
+      area (average precision), are computed only from how many frauds are retrieved and how clean the
+      retrieved set is — the two quantities that map directly onto analyst workload and prevented loss.
+      That is why the tables below lead with fraud-class precision, recall, F1 and PR-AUC, and why accuracy
+      appears nowhere as a headline.
+    </p>
+
+    <h3>Why the rule-based fallback exists</h3>
+    <p>
+      If an artifact is missing, corrupt, or built for a different feature order, its route does not
+      crash and does not silently score shuffled columns. It switches to a fixed, documented rule, reports
+      <code>model_version: "mock_rule"</code>, and returns <code>confidence: null</code> rather than a made-up
+      probability. The badge in the page header turns amber. This keeps the API contract, the tests and
+      the deployment green on a fresh clone while making the degraded state impossible to miss.
+    </p>
+  </section>
+
+  <section class="card" aria-labelledby="compare-heading">
+    <div class="card__head">
+      <h2 id="compare-heading">v3 versus v2, side by side</h2>
+      <span class="small muted" id="metrics-source">loading /metrics…</span>
+    </div>
+    <div id="metrics-error" class="result result--error" role="alert" hidden>
+      <p class="result__title">Could not load metrics</p>
+      <p id="metrics-error-message"></p>
+    </div>
+    <div class="compare">
+      <table id="compare-table">
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col">v3 — ULB creditcard (real)</th>
+            <th scope="col">v2 — card_transdata (synthetic)</th>
+          </tr>
+        </thead>
+        <tbody id="compare-body">
+          <tr><td colspan="3" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      Fraud-class metrics at the default 0.5 threshold on a stratified 20 % hold-out. PR-AUC is
+      threshold-free (average precision). Neither model was tuned after the first fit.
+    </p>
+  </section>
+
+  <section class="card" aria-labelledby="cm-heading">
+    <h2 id="cm-heading">Confusion matrices (hold-out, threshold 0.5)</h2>
+    <div class="matrix-grid" id="matrices"></div>
+  </section>
+
+  <section class="card" aria-labelledby="fi-heading">
+    <h2 id="fi-heading">Feature importances (Gini)</h2>
+    <div class="matrix-grid" id="importances"></div>
+    <p class="hint" style="margin-top:10px">v3 shows its ten most important components out of 29; the remaining share is listed beneath the bars.</p>
+  </section>
+
+  <section class="card" aria-labelledby="status-heading">
+    <h2 id="status-heading">Artifacts on this instance</h2>
+    <div id="artifact-status"></div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/model.js" defer></script>
+{% endblock %}

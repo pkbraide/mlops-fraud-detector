@@ -1,170 +1,198 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="Score a card transaction for fraud risk in real time with a RandomForest trained on one million labelled transactions.">
-  <meta name="color-scheme" content="light">
-  <title>{{ service_name }}</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-  <div class="page">
+{% extends "base.html" %}
 
-    <header class="header">
-      <div class="header__text">
-        <p class="eyebrow">Fraud Detection · v{{ service_version }}</p>
-        <h1 class="title">{{ service_name }}</h1>
-        <p class="tagline">
-          Scores a card transaction for fraud risk in real time using a RandomForest trained on
-          one million labelled transactions. Every result names the model that produced it.
-        </p>
+{% block content %}
+<section class="intro">
+  <p class="eyebrow">Interactive demo</p>
+  <h1 class="title">{{ service_name }}</h1>
+  <p class="lede">
+    Score a card transaction and see the model's fraud probability, not just a verdict. Pick the
+    behavioural model (v2) to type a transaction in, or the anonymised benchmark model (v3) to score
+    real hold-out rows. Move the threshold slider to watch precision trade against recall live.
+  </p>
+</section>
+
+<div class="layout">
+
+  <section class="card" aria-labelledby="input-heading">
+    <h2 id="input-heading" class="visually-hidden">Transaction input</h2>
+
+    <fieldset class="selector">
+      <legend>Model</legend>
+      <label class="option">
+        <input type="radio" name="model" value="v2" checked>
+        <span class="option__title">Behavioural features (v2)</span>
+        <span class="option__desc">7 interpretable fields. Trained on synthetic card_transdata.</span>
+        <span class="option__status" data-model-status="v2">checking…</span>
+      </label>
+      <label class="option">
+        <input type="radio" name="model" value="v3">
+        <span class="option__title">Anonymised PCA features (v3)</span>
+        <span class="option__desc">29 PCA components. Trained on the real ULB benchmark, 0.17 % fraud.</span>
+        <span class="option__status" data-model-status="v3">checking…</span>
+      </label>
+    </fieldset>
+
+    <div id="panel-v2">
+      <div class="card__head">
+        <h2>Transaction</h2>
+        <div class="examples">
+          <button type="button" class="btn btn--ghost" data-example="legit">Load legitimate example</button>
+          <button type="button" class="btn btn--ghost" data-example="fraud">Load fraudulent example</button>
+        </div>
       </div>
-      <div class="header__status" aria-live="polite">
-        <span class="status-label">Serving model</span>
-        <span id="model-badge" class="badge badge--loading" title="Read from GET /health on page load">checking…</span>
+
+      <form id="predict-form" novalidate>
+        <div class="grid">
+          <div class="field">
+            <label for="distance_from_home">Distance from home <span class="unit">km</span></label>
+            <input type="number" id="distance_from_home" name="distance_from_home" inputmode="decimal" min="0" step="any" required value="5.2">
+            <p class="hint">Between the transaction location and the cardholder's home address.</p>
+            <p class="error" data-error-for="distance_from_home" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="distance_from_last_transaction">Distance from last transaction <span class="unit">km</span></label>
+            <input type="number" id="distance_from_last_transaction" name="distance_from_last_transaction" inputmode="decimal" min="0" step="any" required value="0.4">
+            <p class="hint">From the previous transaction's location to this one.</p>
+            <p class="error" data-error-for="distance_from_last_transaction" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="ratio_to_median_purchase_price">Ratio to median purchase price</label>
+            <input type="number" id="ratio_to_median_purchase_price" name="ratio_to_median_purchase_price" inputmode="decimal" min="0" step="any" required value="0.9">
+            <p class="hint">Transaction price ÷ this cardholder's median purchase. 1.0 is typical spend.</p>
+            <p class="error" data-error-for="ratio_to_median_purchase_price" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="repeat_retailer">Repeat retailer</label>
+            <select id="repeat_retailer" name="repeat_retailer" required>
+              <option value="1" selected>Yes — used before by this card</option>
+              <option value="0">No — first purchase here</option>
+            </select>
+            <p class="error" data-error-for="repeat_retailer" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="used_chip">Used chip</label>
+            <select id="used_chip" name="used_chip" required>
+              <option value="1" selected>Yes — EMV chip read</option>
+              <option value="0">No — swipe or manual entry</option>
+            </select>
+            <p class="error" data-error-for="used_chip" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="used_pin_number">Used PIN</label>
+            <select id="used_pin_number" name="used_pin_number" required>
+              <option value="1">Yes — PIN entered</option>
+              <option value="0" selected>No — no PIN</option>
+            </select>
+            <p class="error" data-error-for="used_pin_number" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="online_order">Online order</label>
+            <select id="online_order" name="online_order" required>
+              <option value="1">Yes — card not present</option>
+              <option value="0" selected>No — in person</option>
+            </select>
+            <p class="error" data-error-for="online_order" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn--primary" id="submit-btn">
+            <span class="btn__label">Score transaction</span>
+            <span class="btn__spinner" aria-hidden="true"></span>
+          </button>
+          <span class="actions__hint">Sends <code>POST /v2/predict</code></span>
+        </div>
+      </form>
+    </div>
+
+    <div id="panel-v3" hidden>
+      <div class="card__head">
+        <h2>Real hold-out transactions</h2>
       </div>
-    </header>
-
-    <aside class="notice" role="note">
-      <strong>Cold start.</strong> This demo runs on Render's free tier, which sleeps after 15 minutes
-      of inactivity. The first request after idle can take about 50 seconds while the container starts;
-      subsequent requests respond in milliseconds.
-    </aside>
-
-    <main class="layout">
-
-      <section class="card card--form" aria-labelledby="form-heading">
-        <div class="card__head">
-          <h2 id="form-heading" class="card__title">Transaction</h2>
-          <div class="examples">
-            <button type="button" class="btn btn--ghost" id="load-legit" data-example="legit">Load legitimate example</button>
-            <button type="button" class="btn btn--ghost" id="load-fraud" data-example="fraud">Load fraudulent example</button>
-          </div>
-        </div>
-
-        <form id="predict-form" novalidate>
-          <div class="grid">
-
-            <div class="field">
-              <label for="distance_from_home">Distance from home <span class="unit">km</span></label>
-              <input type="number" id="distance_from_home" name="distance_from_home" inputmode="decimal" min="0" step="any" required value="5.2">
-              <p class="hint">Between the transaction location and the cardholder's home address.</p>
-              <p class="error" data-error-for="distance_from_home"></p>
-            </div>
-
-            <div class="field">
-              <label for="distance_from_last_transaction">Distance from last transaction <span class="unit">km</span></label>
-              <input type="number" id="distance_from_last_transaction" name="distance_from_last_transaction" inputmode="decimal" min="0" step="any" required value="0.4">
-              <p class="hint">From the previous transaction's location to this one.</p>
-              <p class="error" data-error-for="distance_from_last_transaction"></p>
-            </div>
-
-            <div class="field">
-              <label for="ratio_to_median_purchase_price">Ratio to median purchase price</label>
-              <input type="number" id="ratio_to_median_purchase_price" name="ratio_to_median_purchase_price" inputmode="decimal" min="0" step="any" required value="0.9">
-              <p class="hint">Transaction price ÷ this cardholder's median purchase. 1.0 is typical spend.</p>
-              <p class="error" data-error-for="ratio_to_median_purchase_price"></p>
-            </div>
-
-            <div class="field">
-              <label for="repeat_retailer">Repeat retailer</label>
-              <select id="repeat_retailer" name="repeat_retailer" required>
-                <option value="1" selected>Yes — used before by this card</option>
-                <option value="0">No — first purchase here</option>
-              </select>
-              <p class="error" data-error-for="repeat_retailer"></p>
-            </div>
-
-            <div class="field">
-              <label for="used_chip">Used chip</label>
-              <select id="used_chip" name="used_chip" required>
-                <option value="1" selected>Yes — EMV chip read</option>
-                <option value="0">No — swipe or manual entry</option>
-              </select>
-              <p class="error" data-error-for="used_chip"></p>
-            </div>
-
-            <div class="field">
-              <label for="used_pin_number">Used PIN</label>
-              <select id="used_pin_number" name="used_pin_number" required>
-                <option value="1">Yes — PIN entered</option>
-                <option value="0" selected>No — no PIN</option>
-              </select>
-              <p class="error" data-error-for="used_pin_number"></p>
-            </div>
-
-            <div class="field">
-              <label for="online_order">Online order</label>
-              <select id="online_order" name="online_order" required>
-                <option value="1">Yes — card not present</option>
-                <option value="0" selected>No — in person</option>
-              </select>
-              <p class="error" data-error-for="online_order"></p>
-            </div>
-
-          </div>
-
-          <div class="actions">
-            <button type="submit" class="btn btn--primary" id="submit-btn">
-              <span class="btn__label">Score transaction</span>
-              <span class="btn__spinner" aria-hidden="true"></span>
-            </button>
-            <span class="actions__hint">Sends <code>POST /v2/predict</code></span>
-          </div>
-        </form>
-      </section>
-
-      <section class="card card--result" aria-labelledby="result-heading" aria-live="polite">
-        <h2 id="result-heading" class="card__title">Verdict</h2>
-
-        <div id="result-idle" class="result result--idle">
-          <p>No transaction scored yet. Fill in the form or load an example, then score it.</p>
-        </div>
-
-        <div id="result-loading" class="result result--loading" hidden>
-          <span class="spinner" aria-hidden="true"></span>
-          <p>Scoring…</p>
-          <p class="muted">If the service was idle this can take up to a minute.</p>
-        </div>
-
-        <div id="result-verdict" class="result verdict" hidden>
-          <p class="verdict__label" id="verdict-label">—</p>
-          <p class="verdict__sub" id="verdict-sub"></p>
-          <dl class="meta">
-            <div><dt>Served by</dt><dd><code id="verdict-model">—</code></dd></div>
-            <div><dt>Latency</dt><dd id="verdict-latency">—</dd></div>
-            <div><dt>Raw response</dt><dd><code id="verdict-raw" class="raw">—</code></dd></div>
-          </dl>
-        </div>
-
-        <div id="result-error" class="result result--error" role="alert" hidden>
-          <p class="result__title">Request failed</p>
-          <p id="error-message"></p>
-          <ul id="error-list"></ul>
-        </div>
-      </section>
-
-    </main>
-
-    <footer class="footer">
-      <nav class="footer__links" aria-label="Project links">
-        <a href="{{ repo_url }}" rel="noopener">Source on GitHub</a>
-        <a href="/docs">API documentation</a>
-        <a href="/health">Health JSON</a>
-      </nav>
-      <p class="footer__note">
-        Model: RandomForest, class-weighted, trained on OpenML 45955 (<em>card_transdata</em>, CC0).
-        Research demo — not a production fraud system.
+      <p class="muted small" style="margin:0 0 12px">
+        Twenty-nine PCA components are not something to type by hand, so v3 scores genuine rows from the
+        test split that the model never saw during training. Ground truth is shown so you can judge the
+        verdict, not just read it.
       </p>
-    </footer>
+      {% if v3_preset_count %}
+      <div class="presets" id="presets"></div>
+      {% else %}
+      <p class="notice notice--warn"><strong>No presets available.</strong> The file <code>app/static/data/v3_presets.json</code> was not found on this instance.</p>
+      {% endif %}
+      <p class="actions__hint" style="margin-top:14px">Sends <code>POST /v3/predict</code></p>
+    </div>
+  </section>
 
-  </div>
+  <section class="card card--sticky" aria-labelledby="result-heading">
+    <h2 id="result-heading">Verdict</h2>
 
-  <noscript>
-    <div class="noscript">This page needs JavaScript to call the scoring API. The API itself works without it — see <a href="/docs">/docs</a>.</div>
-  </noscript>
+    <div class="threshold">
+      <div class="threshold__row">
+        <label for="threshold">Threshold</label>
+        <input type="range" id="threshold" min="0.05" max="0.95" step="0.05" value="0.5" aria-describedby="threshold-hint">
+        <output for="threshold" id="threshold-out">0.50</output>
+      </div>
+      <p class="hint" id="threshold-hint">Fraud is declared when probability ≥ threshold. Lower it to catch more fraud at the cost of false alarms; raise it for fewer, surer flags. Moving it re-scores the last transaction.</p>
+    </div>
 
-  <script src="/static/app.js" defer></script>
-</body>
-</html>
+    <div aria-live="polite" aria-atomic="true">
+      <div id="result-idle" class="result result--idle">
+        <p>No transaction scored yet. Fill in the form, load an example, or pick a real transaction.</p>
+      </div>
+
+      <div id="result-loading" class="result result--loading" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <p>Scoring…</p>
+        <p class="muted small">If the service was idle this can take up to a minute.</p>
+      </div>
+
+      <div id="result-verdict" class="result verdict" hidden>
+        <div class="verdict__head">
+          <svg class="verdict__icon" id="verdict-icon-fraud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <svg class="verdict__icon" id="verdict-icon-legit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+            <circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>
+          </svg>
+          <p class="verdict__label" id="verdict-label">—</p>
+        </div>
+        <p class="verdict__sub" id="verdict-sub"></p>
+
+        <div class="meter-block" id="meter-block">
+          <div class="meter-block__label">
+            <span id="meter-title">Fraud probability</span>
+            <span class="meter-block__value" id="meter-value">—</span>
+          </div>
+          <div class="meter" role="meter" aria-labelledby="meter-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter">
+            <div class="meter__fill" id="meter-fill"></div>
+            <div class="meter__mark" id="meter-mark" title="threshold"></div>
+          </div>
+          <div class="meter-block__scale"><span>0 %</span><span id="meter-thr">threshold 50 %</span><span>100 %</span></div>
+        </div>
+        <p class="muted small" id="meter-note" hidden></p>
+
+        <dl class="meta">
+          <div><dt>Served by</dt><dd><code id="verdict-model">—</code></dd></div>
+          <div><dt>Threshold</dt><dd id="verdict-threshold">—</dd></div>
+          <div id="truth-row" hidden><dt>Ground truth</dt><dd id="verdict-truth">—</dd></div>
+          <div><dt>Latency</dt><dd id="verdict-latency">—</dd></div>
+          <div><dt>Raw response</dt><dd><code id="verdict-raw" class="raw">—</code></dd></div>
+        </dl>
+      </div>
+
+      <div id="result-error" class="result result--error" role="alert" hidden>
+        <p class="result__title">Request failed</p>
+        <p id="error-message"></p>
+        <ul id="error-list"></ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script id="v3-presets" type="application/json">{{ v3_presets_json | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/demo.js" defer></script>
+{% endblock %}

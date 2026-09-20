@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Batch scoring · {{ service_name }}{% endblock %}
+{% block description %}Upload a CSV of card transactions and score every row with the v2 fraud model.{% endblock %}
+
+{% block content %}
+<section class="intro">
+  <p class="eyebrow">Batch scoring</p>
+  <h1 class="title">Score a CSV of transactions</h1>
+  <p class="lede">
+    Upload a UTF-8 <code>.csv</code> with the seven v2 feature columns and every row comes back with a
+    verdict and a fraud probability. Files are processed in memory and nothing is stored.
+  </p>
+</section>
+
+<div class="stack">
+
+  <section class="card" aria-labelledby="upload-heading">
+    <div class="card__head">
+      <h2 id="upload-heading">Upload</h2>
+      <a class="btn btn--ghost" href="{{ sample_csv_url }}" download="sample_batch.csv">Download sample CSV</a>
+    </div>
+
+    <p class="small muted" style="margin:0 0 6px">Expected header (any column order; extra columns are ignored):</p>
+    <ul class="headers" aria-label="Expected CSV columns">
+      {% for name in v2_features %}<li>{{ name }}</li>{% endfor %}
+    </ul>
+    <p class="hint" style="margin-top:8px">
+      Distances and the ratio must be numbers ≥ 0; <code>repeat_retailer</code>, <code>used_chip</code>,
+      <code>used_pin_number</code> and <code>online_order</code> must be 0 or 1.
+      Limits: {{ max_mb }} MB and {{ max_rows }} data rows per upload.
+      The sample file contains 25 real hold-out rows, five of them confirmed fraud.
+    </p>
+
+    <form id="batch-form" novalidate style="margin-top:16px">
+      <label class="dropzone" for="csv-file">
+        <span><strong>Choose a CSV file</strong> <span class="muted">— or drop one here</span></span>
+        <input type="file" id="csv-file" name="file" accept=".csv,text/csv" required>
+      </label>
+      <p class="hint" id="file-info" aria-live="polite"></p>
+      <p class="error" id="file-error" role="alert"></p>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--primary" id="batch-submit" disabled>
+          <span class="btn__label">Score file</span>
+          <span class="btn__spinner" aria-hidden="true"></span>
+        </button>
+        <label class="actions__hint" for="batch-threshold">Threshold
+          <input class="input" type="number" id="batch-threshold" min="0.05" max="0.95" step="0.05" value="0.5" style="width:90px;height:34px;margin-left:6px;display:inline-block">
+        </label>
+        <span class="actions__hint">Sends <code>POST /v2/batch</code></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="results-heading" aria-live="polite">
+    <div class="card__head">
+      <h2 id="results-heading">Results</h2>
+      <button type="button" class="btn btn--ghost" id="download-results" hidden>Download results as CSV</button>
+    </div>
+
+    <div id="batch-idle" class="result result--idle"><p>No file scored yet.</p></div>
+
+    <div id="batch-loading" class="result result--loading" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <p>Scoring rows…</p>
+      <p class="muted small">If the service was idle this can take up to a minute.</p>
+    </div>
+
+    <div id="batch-error" class="result result--error" role="alert" hidden>
+      <p class="result__title">Upload rejected</p>
+      <p id="batch-error-message"></p>
+    </div>
+
+    <div id="batch-results" hidden>
+      <div class="stats" id="batch-stats"></div>
+      <p class="small muted" id="batch-served"></p>
+      <div class="table-wrap" tabindex="0" aria-label="Scored rows, scrollable">
+        <table id="batch-table">
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th>Verdict</th>
+              <th class="num">Confidence</th>
+              <th class="num">Dist. home</th>
+              <th class="num">Dist. last</th>
+              <th class="num">Ratio</th>
+              <th>Repeat</th>
+              <th>Chip</th>
+              <th>PIN</th>
+              <th>Online</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/batch.js" defer></script>
+{% endblock %}
